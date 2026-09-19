@@ -10,44 +10,28 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="หมวกนิรภัย">
   <meta name="description" content="ระบบสแกนหมวกนิรภัยเด็กอนุบาลด้วย QR Code">
+
   <title>ระบบสแกนหมวกนิรภัยเด็กอนุบาล</title>
 
-  <!-- ============================================================
-       IFRAME DETECTOR + BUSTER
-       Google Apps Script รันใน cross-origin iframe → บล็อกกล้อง
-       พยายามหลุดออกจาก iframe ทันทีที่โหลด
-  ============================================================ -->
+  <!-- Iframe Buster: ดึงแอปออกจาก GAS sandbox เพื่อให้กล้องทำงาน -->
   <script>
     (function () {
-      var IS_IFRAME = false;
       try {
-        IS_IFRAME = (window.top !== window.self);
-      } catch (e) {
-        IS_IFRAME = true; // cross-origin = in iframe
-      }
-
-      // เก็บ flag ไว้ให้ UI ตรวจ
-      window.__IN_GAS_IFRAME__ = IS_IFRAME;
-
-      if (IS_IFRAME) {
-        // 1) ลอง top.location (จะ error ถ้า cross-origin)
-        try {
-          if (window.top.location.href.indexOf('gascamera=1') === -1) {
-            window.top.location.href = window.location.href +
-              (window.location.href.indexOf('?') > -1 ? '&' : '?') + 'gascamera=1';
-            return;
+        if (window.top !== window.self) {
+          var url = window.location.href;
+          if (url.indexOf('gascamera=1') === -1) {
+            var newUrl = url + (url.indexOf('?') > -1 ? '&' : '?') + 'gascamera=1';
+            try { window.top.location.href = newUrl; }
+            catch (e) { window.open(newUrl, '_blank'); }
           }
-        } catch (e) {
-          // cross-origin → ใช้วิธีต่อไป
         }
-        // 2) ลอง parent.location
+      } catch (e) {
         try {
-          if (window.parent.location.href.indexOf('gascamera=1') === -1) {
-            window.parent.location.href = window.location.href +
-              (window.location.href.indexOf('?') > -1 ? '&' : '?') + 'gascamera=1';
-            return;
+          var u = window.location.href;
+          if (u.indexOf('gascamera=1') === -1) {
+            window.open(u + (u.indexOf('?') > -1 ? '&' : '?') + 'gascamera=1', '_blank');
           }
-        } catch (e) {}
+        } catch (e2) {}
       }
     })();
   </script>
@@ -83,7 +67,8 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <!-- [FIX-1] เปลี่ยน CDN qrcodejs เป็น cdnjs (เสถียรกว่า npm mirror) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
   <style>
@@ -105,11 +90,11 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Glass cards */
+    /* Cards */
     .glass-card { background: rgba(255,255,255,0.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
     .dark .glass-card { background: rgba(31,36,24,0.72); }
 
-    /* App background */
+    /* Gradient backgrounds */
     .bg-app-light {
       background:
         radial-gradient(1200px 600px at 10% -10%, #E9EEDB 0%, transparent 60%),
@@ -190,7 +175,7 @@
         position: absolute; left:0; top:0; width:100%;
         padding: 8mm; background:#fff;
       }
-      .no-print, #iframeBanner { display:none !important; }
+      .no-print { display:none !important; }
       .qr-sticker { border:1px dashed #999; }
     }
 
@@ -203,40 +188,16 @@
     .toast.out { animation: toastOut .3s ease both; }
     @keyframes toastIn { from{opacity:0;transform:translateY(-14px) scale(.96)} to{opacity:1;transform:none} }
     @keyframes toastOut { to{opacity:0;transform:translateY(-14px) scale(.96)} }
-
-    /* Iframe banner */
-    #iframeBanner {
-      animation: slideDown .35s cubic-bezier(.34,1.56,.64,1) both;
-    }
-    @keyframes slideDown {
-      from { transform: translateY(-100%); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
   </style>
 </head>
 
 <body class="bg-app-light dark:bg-app-light text-olive-800 dark:text-cream-100 min-h-screen antialiased">
 
-  <!-- ================= IFRAME WARNING BANNER ================= -->
-  <div id="iframeBanner" class="hidden fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-4 py-3 shadow-lg no-print">
-    <div class="max-w-6xl mx-auto flex items-center gap-3">
-      <span class="text-2xl shrink-0">⚠️</span>
-      <div class="flex-1 min-w-0">
-        <div class="font-bold text-sm leading-tight">กล้องจะไม่ทำงานในโหมดฝัง</div>
-        <div class="text-[11px] opacity-95 leading-tight">กรุณากดปุ่มด้านขวาเพื่อเปิดในแท็บใหม่</div>
-      </div>
-      <button id="btnBustIframe"
-        class="px-3 py-2 rounded-full bg-white text-orange-600 font-bold text-xs hover:scale-105 active:scale-95 transition whitespace-nowrap shadow-md">
-        🚀 เปิดในแท็บใหม่
-      </button>
-    </div>
-  </div>
-
   <!-- ================= TOAST BOX ================= -->
   <div id="toastBox" class="fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[min(94vw,420px)] space-y-2"></div>
 
   <!-- ================= HEADER ================= -->
-  <header id="appHeader" class="sticky top-0 z-40">
+  <header class="sticky top-0 z-40">
     <div class="glass-card border-b border-olive-100/70 dark:border-night-700/70">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
         <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-olive-400 to-olive-600 flex items-center justify-center text-xl shadow-soft">
@@ -259,11 +220,12 @@
   </header>
 
   <!-- ================= MAIN ================= -->
-  <main id="appMain" class="max-w-6xl mx-auto px-3 sm:px-4 pt-4 pb-32">
+  <main class="max-w-6xl mx-auto px-3 sm:px-4 pt-4 pb-32">
 
     <!-- ============ PAGE: SCAN ============ -->
     <section id="page-scan" class="page active">
 
+      <!-- Mini stats -->
       <div class="grid grid-cols-3 gap-2.5 mb-3">
         <div class="glass-card rounded-2xl p-3 text-center border border-olive-100/70 dark:border-night-700/70 shadow-soft">
           <div class="text-[11px] text-olive-500 dark:text-olive-300 font-medium">ทั้งหมด</div>
@@ -279,6 +241,7 @@
         </div>
       </div>
 
+      <!-- Scanner card -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
@@ -288,6 +251,7 @@
           <span id="scannerBadge" class="text-[11px] px-2.5 py-1 rounded-full bg-olive-100 dark:bg-night-700 text-olive-600 dark:text-olive-200 font-medium">พร้อม</span>
         </div>
 
+        <!-- Camera area -->
         <div id="camWrap" class="relative rounded-3xl overflow-hidden bg-night-900/90 dark:bg-black" style="min-height:280px">
           <div id="qr-reader" class="w-full"></div>
 
@@ -296,6 +260,7 @@
             <div class="scan-line"></div>
           </div>
 
+          <!-- Idle UI with fallback -->
           <div id="camIdle" class="absolute inset-0 flex flex-col items-center justify-center text-cream-100 text-center px-6">
             <div class="text-5xl mb-3">📷</div>
             <p class="font-semibold mb-1">เปิดกล้องไม่ทำงาน?</p>
@@ -306,14 +271,15 @@
                 🔄 ลองอีกครั้ง
               </button>
               <button id="btnOpenDirect"
-                class="px-4 py-3 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white text-sm font-bold shadow-lg hover:scale-105 active:scale-95 transition">
-                🚀 เปิดในแท็บใหม่ (แนะนำ)
+                class="px-4 py-2.5 rounded-full bg-white/20 hover:bg-white/30 text-cream-100 text-xs font-semibold transition">
+                🚀 เปิดในแท็บใหม่
               </button>
             </div>
             <p class="text-[10px] opacity-60 mt-3">หรือใช้ช่องกรอกรหัสด้านล่าง</p>
           </div>
         </div>
 
+        <!-- Scanner controls -->
         <div class="grid grid-cols-2 gap-2.5 mt-3">
           <button id="btnStartCam"
             class="col-span-2 py-3.5 rounded-2xl bg-gradient-to-r from-olive-500 to-olive-600 text-white font-semibold shadow-soft hover:shadow-lg active:scale-[.98] transition flex items-center justify-center gap-2">
@@ -322,6 +288,7 @@
           </button>
         </div>
 
+        <!-- Manual fallback -->
         <div class="mt-4 pt-4 border-t border-olive-100 dark:border-night-700">
           <p class="text-xs text-olive-500 dark:text-olive-300 mb-2 flex items-center gap-1.5">
             <span>⌨️</span> สำรอง: กรอกรหัสนักเรียน (กรณีกล้องใช้ไม่ได้)
@@ -336,6 +303,7 @@
           </div>
         </div>
 
+        <!-- Scanner name -->
         <div class="mt-3 flex items-center gap-2">
           <span class="text-xs text-olive-500 dark:text-olive-300 whitespace-nowrap">👤 ผู้สแกน:</span>
           <input id="scannerName" type="text"
@@ -343,6 +311,7 @@
         </div>
       </div>
 
+      <!-- Recent scans -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft mt-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-sm flex items-center gap-2">🕐 สแกนล่าสุดวันนี้</h3>
@@ -368,6 +337,7 @@
         </div>
       </div>
 
+      <!-- Stat cards (5) -->
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
         <div class="rounded-2xl p-3.5 bg-gradient-to-br from-cream-100 to-white dark:from-night-700 dark:to-night-800 border border-olive-100 dark:border-night-600 shadow-soft">
           <div class="flex items-center justify-between">
@@ -415,6 +385,7 @@
         </div>
       </div>
 
+      <!-- Progress -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft mb-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-sm">🚌 ความคืบหน้าการสแกน</h3>
@@ -432,6 +403,7 @@
         </div>
       </div>
 
+      <!-- Charts -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft">
           <h3 class="font-semibold text-sm mb-3">📊 อัตราการสแกนตามชั้นเรียน</h3>
@@ -443,6 +415,7 @@
         </div>
       </div>
 
+      <!-- Filters -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft mb-4">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5">
           <input id="fSearch" type="text" placeholder="🔍 ค้นหาชื่อ / รหัส..."
@@ -479,6 +452,7 @@
         </div>
       </div>
 
+      <!-- Student list -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft">
         <h3 class="font-semibold text-sm mb-3">📋 รายชื่อนักเรียน</h3>
         <div id="studentList" class="space-y-2 max-h-[520px] overflow-y-auto pr-1">
@@ -489,6 +463,8 @@
 
     <!-- ============ PAGE: LEAVE ============ -->
     <section id="page-leave" class="page">
+
+      <!-- Today's leaves -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft mb-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-sm flex items-center gap-2">📋 รายการลาวันนี้</h3>
@@ -500,10 +476,12 @@
         </div>
       </div>
 
+      <!-- New leave form -->
       <div class="glass-card rounded-3xl p-4 border border-olive-100/70 dark:border-night-700/70 shadow-soft">
         <h3 class="font-semibold text-sm mb-3 flex items-center gap-2">➕ ลงทะเบียนลาใหม่</h3>
 
         <div class="space-y-3">
+          <!-- Student picker -->
           <div>
             <label class="text-xs text-olive-500 dark:text-olive-300 mb-1 block font-medium">
               👧 เลือกนักเรียน <span class="text-rose-500">*</span>
@@ -518,6 +496,7 @@
             <p id="leaveStudentHint" class="text-[11px] text-olive-400 mt-1">ยังไม่ได้เลือก</p>
           </div>
 
+          <!-- Dates -->
           <div class="grid grid-cols-2 gap-2.5">
             <div>
               <label class="text-xs text-olive-500 dark:text-olive-300 mb-1 block font-medium">
@@ -527,12 +506,15 @@
                 class="w-full px-3.5 py-2.5 rounded-xl border border-olive-200 dark:border-night-600 bg-white/80 dark:bg-night-800 outline-none focus:ring-2 focus:ring-rose-300/50 text-sm">
             </div>
             <div>
-              <label class="text-xs text-olive-500 dark:text-olive-300 mb-1 block font-medium">📅 ถึงวันที่</label>
+              <label class="text-xs text-olive-500 dark:text-olive-300 mb-1 block font-medium">
+                📅 ถึงวันที่
+              </label>
               <input id="leaveTo" type="date"
                 class="w-full px-3.5 py-2.5 rounded-xl border border-olive-200 dark:border-night-600 bg-white/80 dark:bg-night-800 outline-none focus:ring-2 focus:ring-rose-300/50 text-sm">
             </div>
           </div>
 
+          <!-- Type + Recorder -->
           <div class="grid grid-cols-2 gap-2.5">
             <div>
               <label class="text-xs text-olive-500 dark:text-olive-300 mb-1 block font-medium">🏷️ ประเภท</label>
@@ -551,12 +533,14 @@
             </div>
           </div>
 
+          <!-- Reason -->
           <div>
             <label class="text-xs text-olive-500 dark:text-olive-300 mb-1 block font-medium">📝 เหตุผล / หมายเหตุ</label>
             <input id="leaveReason" type="text" placeholder="เช่น มีไข้สูง"
               class="w-full px-3.5 py-2.5 rounded-xl border border-olive-200 dark:border-night-600 bg-white/80 dark:bg-night-800 outline-none focus:ring-2 focus:ring-rose-300/50 text-sm">
           </div>
 
+          <!-- Quick range buttons -->
           <div class="flex gap-2 flex-wrap">
             <button type="button" data-quick-range="1" class="px-3 py-1.5 rounded-full bg-olive-100 dark:bg-night-700 text-olive-700 dark:text-olive-100 text-xs font-medium hover:bg-olive-200 dark:hover:bg-night-600 transition">วันนี้</button>
             <button type="button" data-quick-range="3" class="px-3 py-1.5 rounded-full bg-olive-100 dark:bg-night-700 text-olive-700 dark:text-olive-100 text-xs font-medium hover:bg-olive-200 dark:hover:bg-night-600 transition">3 วัน</button>
@@ -564,6 +548,7 @@
             <button type="button" data-quick-range="7" class="px-3 py-1.5 rounded-full bg-olive-100 dark:bg-night-700 text-olive-700 dark:text-olive-100 text-xs font-medium hover:bg-olive-200 dark:hover:bg-night-600 transition">1 สัปดาห์</button>
           </div>
 
+          <!-- Save button -->
           <button id="btnSaveLeave"
             class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-500 text-white font-semibold shadow-soft hover:shadow-lg active:scale-[.98] transition flex items-center justify-center gap-2">
             <span>💾</span><span id="btnSaveLeaveText">บันทึกการลา</span>
@@ -637,8 +622,10 @@
   <!-- ================= STUDENT PROFILE MODAL ================= -->
   <div id="profileModal" class="fixed inset-0 z-[70] hidden">
     <div class="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm" data-close></div>
+
     <div class="absolute inset-x-3 top-8 bottom-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md sm:w-full flex flex-col">
       <div class="glass-card rounded-3xl border border-olive-100/70 dark:border-night-700/70 shadow-soft h-full flex flex-col overflow-hidden">
+
         <div class="px-4 py-3 flex items-center gap-3 border-b border-olive-100/70 dark:border-night-700/70 shrink-0">
           <button data-close
             class="w-9 h-9 rounded-full bg-white/70 dark:bg-night-700 hover:bg-white dark:hover:bg-night-600 flex items-center justify-center active:scale-90 transition text-lg font-bold"
@@ -648,12 +635,14 @@
             class="w-9 h-9 rounded-full bg-white/70 dark:bg-night-700 hover:bg-white dark:hover:bg-night-600 flex items-center justify-center active:scale-90 transition"
             title="รีเฟรช">↻</button>
         </div>
+
         <div id="profileBody" class="p-4 overflow-y-auto flex-1">
           <div class="flex flex-col items-center justify-center h-full text-center py-10">
             <div class="text-4xl mb-3 animate-pulse">👧</div>
             <p class="text-sm text-olive-400">กำลังโหลด...</p>
           </div>
         </div>
+
       </div>
     </div>
   </div>
@@ -711,11 +700,10 @@
       classChart: null,
       timeChart: null,
       streaks: {},
-      leaveTypes: ['ป่วย', 'ธุระ', 'กิจกรรม', 'ลาพักร้อน'],
-      inIframe: false
+      leaveTypes: ['ป่วย', 'ธุระ', 'กิจกรรม', 'ลาพักร้อน']
     };
 
-    /* ============== DOM HELPERS ============== */
+    /* ============== HELPERS ============== */
     const $  = (s, r) => (r || document).querySelector(s);
     const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 
@@ -744,6 +732,14 @@
         clearTimeout(t);
         t = setTimeout(() => fn.apply(this, arguments), ms);
       };
+    }
+
+    /* [FIX-2] คืนวันที่ "วันนี้" ตาม timezone ท้องถิ่น (ไม่ใช้ UTC)
+       แก้ปัญหา: ก่อน 07:00 น. ของไทย toISOString() จะให้ "เมื่อวาน" */
+    function todayLocalISO() {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
     }
 
     /* ============== BACKEND BRIDGE ============== */
@@ -778,7 +774,7 @@
         `<div class="text-xl leading-none mt-0.5">${p.icon}</div>
          <div class="flex-1 min-w-0">
            <div class="font-semibold text-sm leading-tight">${escapeHtml(title)}</div>
-           ${message ? `<div class="text-xs opacity-95 mt-0.5 break-words whitespace-pre-line">${escapeHtml(message)}</div>` : ''}
+           ${message ? `<div class="text-xs opacity-95 mt-0.5 break-words">${escapeHtml(message)}</div>` : ''}
          </div>`;
       box.appendChild(node);
       setTimeout(() => {
@@ -825,35 +821,6 @@
       confetti({ particleCount: 90, spread: 78, origin: { y: 0.35 }, colors, scalar: 0.95 });
       setTimeout(() => confetti({ particleCount: 60, angle: 60,  spread: 60, origin: { x: 0, y: 0.6 }, colors }), 160);
       setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 60, origin: { x: 1, y: 0.6 }, colors }), 260);
-    }
-
-    /* ============== IFRAME DETECTION ============== */
-    function checkIframe() {
-      let inIframe = false;
-      try { inIframe = (window.top !== window.self); }
-      catch (e) { inIframe = true; }
-      State.inIframe = inIframe;
-
-      if (inIframe) {
-        const banner = $('#iframeBanner');
-        if (banner) {
-          banner.classList.remove('hidden');
-          // ดัน content ลง
-          document.body.style.paddingTop = '60px';
-        }
-      }
-    }
-
-    function bustOutOfIframe() {
-      const url = window.location.href +
-        (window.location.href.indexOf('?') > -1 ? '&' : '?') + 'gascamera=1';
-      try {
-        if (window.top !== window.self) {
-          window.top.location.href = url;
-          return;
-        }
-      } catch (e) {}
-      window.open(url, '_blank');
     }
 
     /* ============== THEME ============== */
@@ -921,70 +888,60 @@
     /* ============================================================
        SCANNER
     ============================================================ */
+    /* [FIX-4] ปรับ startCamera ให้เคลียร์ state ให้สะอาดเมื่อเปิดไม่สำเร็จ
+       - ล้าง State.scanner / State.cameraOn
+       - คืน UI (camIdle, badge, ปุ่ม) กลับเป็น idle
+       - ใช้ facingMode:'environment' ตั้งแต่ preflight (ลด flicker) */
     async function startCamera() {
       if (State.cameraOn) { stopCamera(); return; }
 
-      const btn = $('#btnStartCam');
+      const btn  = $('#btnStartCam');
       const icon = $('#camBtnIcon');
       const txt  = $('#camBtnText');
 
       try {
         btn.disabled = true;
         icon.textContent = '⏳';
-        txt.textContent = 'กำลังเปิดกล้อง...';
+        txt.textContent  = 'กำลังเปิดกล้อง...';
 
-        // ---------- ตรวจ 1: IFRAME ----------
-        let inIframe = false;
-        try { inIframe = (window.top !== window.self); } catch (e) { inIframe = true; }
-        if (inIframe) {
-          throw new Error(
-            'กำลังเปิดในโหมดฝัง iframe → กล้องจะถูกบล็อก\n' +
-            'กรุณากดปุ่ม "เปิดในแท็บใหม่" ที่แบนเนอร์สีส้มด้านบน'
-          );
-        }
-
-        // ---------- ตรวจ 2: HTTPS ----------
+        // ตรวจ HTTPS
         if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
           throw new Error('ต้องเปิดผ่าน HTTPS เท่านั้น');
         }
 
-        // ---------- ตรวจ 3: Browser API ----------
+        // ตรวจ Browser API
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error('เบราว์เซอร์ไม่รองรับกล้อง กรุณาใช้ Chrome/Safari เวอร์ชันใหม่');
         }
 
-        // ---------- ตรวจ 4: Permission ล่วงหน้า ----------
+        // ตรวจ Permission
         try {
           if (navigator.permissions && navigator.permissions.query) {
             const perm = await navigator.permissions.query({ name: 'camera' });
             if (perm.state === 'denied') {
-              throw new Error(
-                'กล้องถูกบล็อกไว้ก่อนหน้านี้\n' +
-                'กรุณาคลิกไอคอน 🔒 ที่ URL bar → Site settings → Camera = Allow → Reload'
-              );
+              throw new Error('กล้องถูกบล็อกไว้ — กรุณาเปิดสิทธิ์ที่ไอคอน 🔒 มุมซ้าย URL bar');
             }
           }
-        } catch (permErr) {
-          if (permErr && permErr.message && permErr.message.indexOf('ถูกบล็อก') > -1) throw permErr;
-        }
+        } catch (permErr) { /* บาง browser ไม่รองรับ → ข้าม */ }
 
-        // ---------- ตรวจ 5: ลองขอ stream ทดสอบ ----------
+        // Preflight ขอ stream ทดสอบ (ใช้ facingMode เดียวกับที่จะใช้จริง)
         try {
-          const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const testStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
           testStream.getTracks().forEach(t => t.stop());
         } catch (mediaErr) {
           const map = {
-            'NotAllowedError': 'ผู้ใช้ไม่อนุญาตให้ใช้กล้อง — กรุณาคลิก "Allow" เมื่อเบราว์เซอร์ถาม',
+            'NotAllowedError': 'ผู้ใช้ไม่อนุญาตให้ใช้กล้อง',
             'NotFoundError': 'ไม่พบกล้องในอุปกรณ์นี้',
-            'NotReadableError': 'กล้องถูกใช้งานโดยแอปอื่น (เช่น Zoom, Teams)',
+            'NotReadableError': 'กล้องถูกใช้งานโดยแอปอื่น',
             'OverconstrainedError': 'กล้องไม่รองรับการตั้งค่าที่ขอ',
-            'SecurityError': 'เบราว์เซอร์บล็อกเพราะไม่ปลอดภัย หรืออยู่ใน iframe',
+            'SecurityError': 'เบราว์เซอร์บล็อกเพราะไม่ปลอดภัย (HTTP/iframe)',
             'AbortError': 'การเปิดกล้องถูกยกเลิก'
           };
           throw new Error(map[mediaErr.name] || mediaErr.message || 'ไม่สามารถเข้าถึงกล้องได้');
         }
 
-        // ---------- เริ่มกล้องจริง ----------
         if (typeof Html5Qrcode === 'undefined') throw new Error('ไม่พบไลบรารีสแกน QR');
 
         State.scanner = new Html5Qrcode('qr-reader', { verbose: false });
@@ -1009,12 +966,33 @@
         $('#scannerBadge').textContent = 'กำลังสแกน';
         $('#scannerBadge').className = 'text-[11px] px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-200 font-medium';
         icon.textContent = '⏹';
-        txt.textContent = 'หยุดกล้อง';
+        txt.textContent  = 'หยุดกล้อง';
+
       } catch (err) {
+        // ★ เคลียร์ state ให้สะอาด เพื่อให้กดปุ่มซ้ำได้ ★
+        if (State.scanner) {
+          try { await State.scanner.stop();  } catch (e) {}
+          try { await State.scanner.clear(); } catch (e) {}
+        }
+        State.scanner  = null;
+        State.cameraOn = false;
+
+        // รีเซ็ต UI กลับเป็น idle
+        const idleEl = $('#camIdle');
+        if (idleEl) idleEl.classList.remove('hidden');
+        const badge = $('#scannerBadge');
+        if (badge) {
+          badge.textContent = 'พร้อม';
+          badge.className = 'text-[11px] px-2.5 py-1 rounded-full bg-olive-100 dark:bg-night-700 text-olive-600 dark:text-olive-200 font-medium';
+        }
+        icon.textContent = '▶️';
+        txt.textContent  = 'เปิดกล้องสแกน';
+
         const msg = (err && err.message) ? err.message : String(err);
-        toast('err', 'เปิดกล้องไม่สำเร็จ', msg, 8000);
+        toast('err', 'เปิดกล้องไม่สำเร็จ', msg + ' — กรุณาใช้ช่องกรอกรหัสด้านล่าง', 6000);
         soundErr();
         console.error('[Camera Error]', err);
+
       } finally {
         btn.disabled = false;
       }
@@ -1086,9 +1064,9 @@
           bumpMiniStats(+1);
           State.confettiFired = false;
 
-          // Streak celebration
+          // [FIX-3] ใช้ apiGetStudentStreak แทน apiGetStudentProfile (เบากว่า + มี cache)
           if (res.student && res.student.id) {
-            callServer('apiGetStudentProfile', res.student.id).then(function (p) {
+            callServer('apiGetStudentStreak', res.student.id).then(function (p) {
               if (p && p.ok && p.streak >= 3) {
                 setTimeout(function () {
                   toast('info', '🔥 สแกนต่อเนื่อง ' + p.streak + ' วัน!',
@@ -1571,7 +1549,8 @@
           renderLeaveStudentList();
           updateLeaveHint();
 
-          const today = new Date().toISOString().slice(0, 10);
+          // [FIX-2] ใช้ todayLocalISO() แทน toISOString()
+          const today = todayLocalISO();
           $('#leaveFrom').value = today;
           $('#leaveTo').value = today;
 
@@ -1781,7 +1760,8 @@
                 }
                 updateLeaveHint();
               }
-              const t = new Date().toISOString().slice(0, 10);
+              // [FIX-2] ใช้ todayLocalISO()
+              const t = todayLocalISO();
               const f = $('#leaveFrom'), to = $('#leaveTo');
               if (f && !f.value) f.value = t;
               if (to && !to.value) to.value = t;
@@ -1820,7 +1800,8 @@
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const date = (State.dashboard && State.dashboard.date) || new Date().toISOString().slice(0, 10);
+      // [FIX-2] fallback ใช้ todayLocalISO()
+      const date = (State.dashboard && State.dashboard.date) || todayLocalISO();
       a.href = url;
       a.download = `รายงานสแกนหมวกนิรภัย_${date}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
@@ -1942,6 +1923,12 @@
 
       if (!filtered.length) {
         grid.innerHTML = '<p class="col-span-full text-center text-sm text-olive-400 py-10">ไม่พบนักเรียนในชั้นที่เลือก</p>';
+        $('#qrCount').textContent = '0 การ์ด';
+        return;
+      }
+
+      if (typeof QRCode === 'undefined') {
+        toast('err', 'ไม่พบไลบรารี QR Code', 'กรุณารีเฟรชหน้าใหม่ (CDN อาจถูกบล็อก)');
         $('#qrCount').textContent = '0 การ์ด';
         return;
       }
@@ -2082,7 +2069,7 @@
       $('#btnOpenDirect').addEventListener('click', (e) => {
         e.preventDefault();
         soundClick();
-        window.open(window.location.href + (window.location.href.indexOf('?') > -1 ? '&' : '?') + 'gascamera=1', '_blank');
+        window.open(window.location.href, '_blank');
       });
 
       $('#btnManual').addEventListener('click', () => {
@@ -2096,10 +2083,6 @@
         if (e.key === 'Enter') { e.preventDefault(); $('#btnManual').click(); }
       });
       $('#btnRefreshRecent').addEventListener('click', () => { soundClick(); loadScanPageData(); });
-
-      // Iframe banner
-      const btnBust = $('#btnBustIframe');
-      if (btnBust) btnBust.addEventListener('click', bustOutOfIframe);
 
       // Dashboard
       $('#btnRefreshDash').addEventListener('click', () => { soundClick(); loadDashboard(); });
@@ -2121,8 +2104,9 @@
       $$('[data-quick-range]').forEach(btn => {
         btn.addEventListener('click', () => applyQuickRange(parseInt(btn.dataset.quickRange, 10) || 1));
       });
+      // [FIX-2] ใช้ todayLocalISO()
       (function initLeaveDates() {
-        const t = new Date().toISOString().slice(0, 10);
+        const t = todayLocalISO();
         if ($('#leaveFrom') && !$('#leaveFrom').value) $('#leaveFrom').value = t;
         if ($('#leaveTo') && !$('#leaveTo').value) $('#leaveTo').value = t;
       })();
@@ -2152,7 +2136,6 @@
        INIT
     ============================================================ */
     async function init() {
-      checkIframe();
       initTheme();
       bindEvents();
       navigate('scan', true);
