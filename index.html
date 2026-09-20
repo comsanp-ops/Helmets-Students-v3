@@ -13,9 +13,7 @@
   <title>ระบบสแกนหมวกนิรภัยเด็กอนุบาล</title>
 
   <!-- ============================================================
-       IFRAME DETECTOR
-       ตรวจ iframe เท่านั้น — ไม่ auto-redirect (จะทำให้จอขาว)
-       ถ้าอยู่ใน iframe → แสดงแบนเนอร์ด้านบน + ปุ่มเปิดแท็บใหม่
+       IFRAME DETECTOR (เฉพาะเมื่อรันใน GAS — ถ้าอยู่บน GitHub Pages จะไม่ใช่ iframe)
   ============================================================ -->
   <script>
     (function () {
@@ -66,13 +64,11 @@
     html, body { font-family: 'Noto Sans Thai', system-ui, sans-serif; }
     body { -webkit-tap-highlight-color: transparent; }
 
-    /* Scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #C8D0B5; border-radius: 8px; }
     .dark ::-webkit-scrollbar-thumb { background: #4B5537; }
 
-    /* Page transition */
     .page { display: none; animation: fadeUp .35s ease both; }
     .page.active { display: block; }
     @keyframes fadeUp {
@@ -80,11 +76,9 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Glass cards */
     .glass-card { background: rgba(255,255,255,0.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
     .dark .glass-card { background: rgba(31,36,24,0.72); }
 
-    /* App background */
     .bg-app-light {
       background:
         radial-gradient(1200px 600px at 10% -10%, #E9EEDB 0%, transparent 60%),
@@ -100,7 +94,6 @@
         #171B12;
     }
 
-    /* Bus progress */
     .bus-icon { transition: left .9s cubic-bezier(.34,1.56,.64,1); filter: drop-shadow(0 3px 4px rgba(0,0,0,.18)); }
     .progress-track {
       background: repeating-linear-gradient(45deg, #EFE8D6, #EFE8D6 10px, #F8F4E8 10px, #F8F4E8 20px);
@@ -110,7 +103,6 @@
     .dark .progress-track { background: repeating-linear-gradient(45deg, #2A3222, #2A3222 10px, #353C28 10px, #353C28 20px); }
     @keyframes roadMove { to { background-position: -40px 0; } }
 
-    /* Scanner */
     #qr-reader { border: none !important; }
     #qr-reader video { border-radius: 22px; object-fit: cover; }
     #qr-reader__scan_region { border-radius: 22px; overflow: hidden; }
@@ -142,13 +134,11 @@
       50%     { top: 86%; opacity:.9; }
     }
 
-    /* Flash */
     .flash-ok  { animation: flashOk .7s ease both; }
     .flash-err { animation: flashErr .7s ease both; }
     @keyframes flashOk  { 0%{box-shadow:0 0 0 0 rgba(124,140,90,.7)} 100%{box-shadow:0 0 0 22px rgba(124,140,90,0)} }
     @keyframes flashErr { 0%{box-shadow:0 0 0 0 rgba(238,167,167,.75)} 100%{box-shadow:0 0 0 22px rgba(238,167,167,0)} }
 
-    /* QR sticker */
     .qr-sticker {
       background: #fff; border-radius: 16px; padding: 10px;
       border: 1px dashed #C8D0B5;
@@ -157,7 +147,6 @@
     }
     .qr-sticker img, .qr-sticker canvas { display:block; margin: 0 auto; }
 
-    /* Print */
     @media print {
       body * { visibility: hidden !important; }
       #printArea, #printArea * { visibility: visible !important; }
@@ -169,7 +158,6 @@
       .qr-sticker { border:1px dashed #999; }
     }
 
-    /* Toast */
     #toastBox { pointer-events: none; }
     .toast {
       pointer-events: auto;
@@ -179,10 +167,7 @@
     @keyframes toastIn { from{opacity:0;transform:translateY(-14px) scale(.96)} to{opacity:1;transform:none} }
     @keyframes toastOut { to{opacity:0;transform:translateY(-14px) scale(.96)} }
 
-    /* Iframe banner animation */
-    #iframeBanner {
-      animation: slideDown .35s cubic-bezier(.34,1.56,.64,1) both;
-    }
+    #iframeBanner { animation: slideDown .35s cubic-bezier(.34,1.56,.64,1) both; }
     @keyframes slideDown {
       from { transform: translateY(-100%); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
@@ -192,7 +177,7 @@
 
 <body class="bg-app-light dark:bg-app-light text-olive-800 dark:text-cream-100 min-h-screen antialiased">
 
-  <!-- ================= IFRAME WARNING BANNER ================= -->
+  <!-- ================= IFRAME WARNING BANNER (แสดงเฉพาะ GAS) ================= -->
   <div id="iframeBanner" class="hidden fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-4 py-3 shadow-lg no-print">
     <div class="max-w-6xl mx-auto flex items-center gap-3">
       <span class="text-2xl shrink-0">⚠️</span>
@@ -687,10 +672,11 @@
       timeChart: null,
       streaks: {},
       leaveTypes: ['ป่วย', 'ธุระ', 'กิจกรรม', 'ลาพักร้อน'],
-      inIframe: false
+      inIframe: false,
+      backend: 'unknown'  // 'gas' | 'fetch' | 'unknown'
     };
 
-    /* ============== HELPERS ============== */
+    /* ============== DOM HELPERS ============== */
     const $  = (s, r) => (r || document).querySelector(s);
     const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 
@@ -721,18 +707,50 @@
       };
     }
 
-    /* ============== BACKEND BRIDGE ============== */
+    /* ============================================================
+       BACKEND BRIDGE
+       Auto-detect: ถ้ามี google.script.run → ใช้ GAS
+                    ถ้าไม่มี (GitHub Pages) → ใช้ fetch + doPost
+    ============================================================ */
+    const API_URL = 'https://script.google.com/macros/s/AKfycbwVvf-1UgyNGGH1mrwT5d6Sz05DwO_2zcjcmf09awhq5l8SIBsSBfynkyuqmJSKg66Nkw/exec';
+
+    function detectBackend() {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        State.backend = 'gas';
+      } else {
+        State.backend = 'fetch';
+      }
+      console.log('[Backend]', State.backend);
+    }
+
     function callServer(fnName) {
       const args = Array.prototype.slice.call(arguments, 1);
-      return new Promise((resolve, reject) => {
-        if (typeof google === 'undefined' || !google.script || !google.script.run) {
-          reject(new Error('ไม่พบ google.script.run — กรุณาเปิดผ่าน Web App URL'));
-          return;
-        }
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(err => reject(err))
-          [fnName].apply(null, args);
+
+      // --- GAS mode: ใช้ google.script.run ---
+      if (State.backend === 'gas') {
+        return new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(err => reject(err))
+            [fnName].apply(null, args);
+        });
+      }
+
+      // --- Fetch mode: POST ไปยัง doPost() ---
+      return fetch(API_URL, {
+        method: 'POST',
+        // ⚠️ ใช้ text/plain เพื่อหลบ CORS preflight
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: fnName, args: args }),
+        redirect: 'follow'
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
+        return res.json();
+      })
+      .then(data => {
+        if (!data.ok) throw new Error(data.error || 'Unknown error');
+        return data.result;
       });
     }
 
@@ -819,7 +837,6 @@
     }
 
     function bustOutOfIframe() {
-      // เปิด URL ตรง ๆ (ไม่มี query parameter แปลกปลอม)
       const cleanUrl = window.location.href.split('?')[0];
       window.open(cleanUrl, '_blank', 'noopener,noreferrer');
     }
@@ -1054,7 +1071,6 @@
           bumpMiniStats(+1);
           State.confettiFired = false;
 
-          // Streak celebration
           if (res.student && res.student.id) {
             callServer('apiGetStudentProfile', res.student.id).then(function (p) {
               if (p && p.ok && p.streak >= 3) {
@@ -2121,6 +2137,7 @@
        INIT
     ============================================================ */
     async function init() {
+      detectBackend();
       checkIframe();
       initTheme();
       bindEvents();
@@ -2142,6 +2159,7 @@
       obs.observe($('#page-scan'), { attributes: true, attributeFilter: ['class'] });
 
       console.log('%c🪖 ระบบหมวกนิรภัยพร้อมใช้งาน', 'color:#7C8C5A;font-weight:700;font-size:14px');
+      console.log('%c🔌 Backend: ' + State.backend.toUpperCase(), 'color:#97A868;font-weight:600');
     }
 
     if (document.readyState === 'loading') {
